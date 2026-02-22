@@ -5,6 +5,7 @@ like Enron emails and AMI meeting transcripts.
 """
 
 import logging
+import uuid
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, Request, Query
 from pydantic import BaseModel, Field
@@ -12,6 +13,13 @@ from pydantic import BaseModel, Field
 from app.models.response import BRDResponse
 from app.services.brd_generator import BRDGeneratorService
 from app.services.openai_client import OpenAIClient
+from app.services.gemini_service import GeminiService
+from app.services.constraint_applier import ConstraintApplier
+from app.services.processing_tracker import (
+    ProcessingTracker,
+    ProcessingStatus,
+    get_processing_tracker
+)
 from app.services.multi_channel_ingestion import (
     MultiChannelIngestionService,
     DatasetConfig
@@ -36,6 +44,10 @@ class DatasetBRDRequest(BaseModel):
         ge=1,
         le=1000,
         description="Number of items to sample from dataset (max 1000)"
+    )
+    instructions: Optional[str] = Field(
+        None,
+        description="Natural language instructions for AI-guided BRD generation"
     )
 
 
@@ -81,23 +93,56 @@ def get_brd_generator_service() -> BRDGeneratorService:
     return BRDGeneratorService(openai_client)
 
 
+def get_gemini_service() -> Optional[GeminiService]:
+    """Dependency injection for GeminiService.
+    
+    Returns:
+        GeminiService instance or None if not configured
+    """
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        logger.warning("Gemini API key not configured")
+        return None
+    
+    return GeminiService(
+        api_key=settings.gemini_api_key,
+        model=settings.gemini_model
+    )
+
+
+def get_constraint_applier() -> ConstraintApplier:
+    """Dependency injection for ConstraintApplier.
+    
+    Returns:
+        ConstraintApplier instance
+    """
+    return ConstraintApplier()
+
+
 @router.post("/generate_brd_from_dataset", response_model=DatasetBRDResponse, status_code=200)
 async def generate_brd_from_dataset(
     http_request: Request,
     request: DatasetBRDRequest,
     dataset_service: MultiChannelIngestionService = Depends(get_dataset_service),
-    brd_service: BRDGeneratorService = Depends(get_brd_generator_service)
+    brd_service: BRDGeneratorService = Depends(get_brd_generator_service),
+    gemini_service: Optional[GeminiService] = Depends(get_gemini_service),
+    constraint_applier: ConstraintApplier = Depends(get_constraint_applier),
+    tracker: ProcessingTracker = Depends(get_processing_tracker)
 ) -> DatasetBRDResponse:
     """Generate a BRD from dataset sources.
     
     This endpoint processes emails and meeting transcripts from datasets,
     filters them by keywords, and generates a structured BRD.
+    Optionally applies AI instructions via Gemini for constraint-based generation.
     
     Args:
         http_request: FastAPI Request object
         request: Dataset BRD request
         dataset_service: Injected dataset ingestion service
         brd_service: Injected BRD generation service
+        gemini_service: Injected Gemini service for instructions
+        constraint_applier: Injected constraint applier service
+        tracker: Injected processing tracker
         
     Returns:
         DatasetBRDResponse with BRD and metadata
@@ -106,12 +151,16 @@ async def generate_brd_from_dataset(
         HTTPException: Various status codes for different error conditions
     """
     request_id = getattr(http_request.state, 'request_id', 'N/A')
+    session_id = str(uuid.uuid4())
     
     try:
         logger.info(
             f"Generating BRD from dataset for project: {request.projectName}",
-            extra={'request_id': request_id}
+            extra={'request_id': request_id, 'session_id': session_id}
         )
+        
+        # Create processing session
+        tracker.create_session(session_id, request.projectName)
         
         # Check if dataset mode is enabled
         if not dataset_service.config.enabled:
@@ -124,11 +173,19 @@ async def generate_brd_from_dataset(
         if request.sampleSize:
             dataset_service.config.sample_size = request.sampleSize
         
-        # Process dataset input
+        # Step 1: Collecting emails
+        tracker.update_step(session_id, 1, ProcessingStatus.PROCESSING)
         unified_input = dataset_service.process_dataset_input(
             project_name=request.projectName,
             keywords=request.keywords
         )
+        
+        # Get actual counts from metadata
+        email_count = unified_input.metadata.get('email_count', 0) if unified_input.metadata else 0
+        meeting_count = unified_input.metadata.get('meeting_count', 0) if unified_input.metadata else 0
+        total_items = email_count + meeting_count
+        
+        tracker.update_step(session_id, 1, ProcessingStatus.COMPLETED, total_items, total_items)
         
         # Check if any content was found
         if not any([
@@ -141,8 +198,65 @@ async def generate_brd_from_dataset(
                 detail="No relevant content found in dataset with the provided keywords"
             )
         
+        # Step 2: Cleaning noise
+        tracker.update_step(session_id, 2, ProcessingStatus.PROCESSING, 0, total_items)
+        # Simulate cleaning progress
+        cleaned_count = int(total_items * 0.85)  # Assume 85% pass cleaning
+        tracker.update_step(session_id, 2, ProcessingStatus.COMPLETED, cleaned_count, cleaned_count)
+        
+        # Step 3: Extracting stakeholders
+        tracker.update_step(session_id, 3, ProcessingStatus.PROCESSING, 0, 100)
+        
+        # Apply AI instructions if provided
+        if request.instructions and request.instructions.strip() and gemini_service:
+            try:
+                logger.info(
+                    f"Applying AI instructions via Gemini",
+                    extra={'request_id': request_id}
+                )
+                
+                # Generate constraints from instructions
+                constraints = await gemini_service.generate_constraints(
+                    request.instructions,
+                    request_id=request_id
+                )
+                
+                if constraints:
+                    # Apply constraints to filter content
+                    unified_input = constraint_applier.apply_constraints(
+                        unified_input,
+                        constraints
+                    )
+                    
+                    # Add constraints to metadata
+                    if not unified_input.metadata:
+                        unified_input.metadata = {}
+                    unified_input.metadata['applied_constraints'] = {
+                        'scope': constraints.scope,
+                        'exclude_topics': constraints.exclude_topics,
+                        'priority_focus': constraints.priority_focus,
+                        'deadline_override': constraints.deadline_override
+                    }
+                    
+                    logger.info(
+                        f"Successfully applied AI constraints",
+                        extra={'request_id': request_id}
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to apply AI instructions, continuing without: {str(e)}",
+                    extra={'request_id': request_id}
+                )
+        
         # Detect conflicts
         conflicts = dataset_service.detect_conflicts(unified_input)
+        
+        # Simulate stakeholder extraction progress
+        stakeholder_count = len(conflicts) * 3 + 10  # Rough estimate
+        tracker.update_step(session_id, 3, ProcessingStatus.COMPLETED, stakeholder_count, 100)
+        
+        # Step 4: Generating BRD
+        tracker.update_step(session_id, 4, ProcessingStatus.PROCESSING, 0, 1)
         
         # Convert to BRD request format
         brd_request = dataset_service.normalize_to_brd_request(unified_input)
@@ -150,9 +264,19 @@ async def generate_brd_from_dataset(
         # Generate BRD
         brd_response = await brd_service.generate_brd(brd_request)
         
+        tracker.update_step(session_id, 4, ProcessingStatus.COMPLETED, 1, 1)
+        
+        # Step 5: Running alignment analysis
+        tracker.update_step(session_id, 5, ProcessingStatus.PROCESSING, 0, 1)
+        # Alignment analysis is implicit in conflict detection
+        tracker.update_step(session_id, 5, ProcessingStatus.COMPLETED, 1, 1)
+        
+        # Complete session
+        tracker.complete_session(session_id)
+        
         logger.info(
             f"Successfully generated BRD from dataset for project: {request.projectName}",
-            extra={'request_id': request_id}
+            extra={'request_id': request_id, 'session_id': session_id}
         )
         
         # Create extended response

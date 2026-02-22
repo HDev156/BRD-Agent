@@ -68,6 +68,52 @@ class Settings(BaseSettings):
         description="Sample size for BRD generation from dataset"
     )
     
+    # Gemini configuration
+    gemini_api_key: Optional[str] = Field(
+        default=None,
+        description="Google Gemini API key for constraint generation"
+    )
+    gemini_model: str = Field(
+        default="gemini-pro",
+        description="Gemini model to use for constraint generation"
+    )
+    gemini_timeout: int = Field(
+        default=10,
+        description="Gemini API request timeout in seconds"
+    )
+    gemini_max_retries: int = Field(
+        default=2,
+        description="Maximum retries for Gemini API calls"
+    )
+    
+    # Chunking configuration
+    chunk_threshold_words: int = Field(
+        default=3000,
+        description="Word count threshold for text chunking"
+    )
+    chunk_size_min: int = Field(
+        default=1000,
+        description="Minimum chunk size in words"
+    )
+    chunk_size_max: int = Field(
+        default=1500,
+        description="Maximum chunk size in words"
+    )
+    chunk_overlap: int = Field(
+        default=100,
+        description="Overlap between chunks in words"
+    )
+    
+    # Tracking configuration
+    sample_sources_count: int = Field(
+        default=5,
+        description="Number of sample sources to include in ingestion summary"
+    )
+    tracking_session_ttl: int = Field(
+        default=3600,
+        description="Tracking session time-to-live in seconds (1 hour)"
+    )
+    
     model_config = {
         "env_file": ".env",
         "case_sensitive": False,

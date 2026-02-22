@@ -3,8 +3,62 @@
 This module defines the Pydantic models for validating incoming API requests.
 """
 
-from typing import Optional
+from typing import Optional, List
 from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+class Email(BaseModel):
+    """Model for an email message.
+    
+    Represents an email message with subject, body, and optional metadata.
+    
+    Attributes:
+        subject: Email subject line
+        body: Email body content
+        sender: Email sender address (optional)
+        date: Email date (optional)
+    """
+    
+    subject: str
+    body: str
+    sender: str = ""
+    date: str = ""
+
+
+class SlackMessage(BaseModel):
+    """Model for a Slack message.
+    
+    Represents a Slack message with channel, user, and content information.
+    
+    Attributes:
+        channel: Slack channel name (e.g., "#project-alpha")
+        user: Username of the message sender
+        text: Message content
+        timestamp: Message timestamp (optional)
+    """
+    
+    channel: str
+    user: str
+    text: str
+    timestamp: str = ""
+
+
+class Meeting(BaseModel):
+    """Model for a meeting transcript.
+    
+    Represents a meeting with transcript, topic, and participant information.
+    
+    Attributes:
+        transcript: Full meeting transcript text
+        topic: Meeting topic or title (optional)
+        speakers: List of speaker names (optional)
+        timestamp: Meeting timestamp (optional)
+    """
+    
+    transcript: str
+    topic: str = ""
+    speakers: List[str] = []
+    timestamp: str = ""
 
 
 class BRDRequest(BaseModel):

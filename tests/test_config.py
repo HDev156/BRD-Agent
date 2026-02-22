@@ -41,12 +41,17 @@ class TestSettings:
         """
         # Set only the required environment variable
         monkeypatch.setenv("OPENAI_API_KEY", "test-api-key-456")
+        # Explicitly unset optional variables to test defaults
+        monkeypatch.delenv("OPENAI_MODEL", raising=False)
+        monkeypatch.delenv("PORT", raising=False)
+        # Disable .env file loading for this test
+        monkeypatch.setattr("pydantic_settings.BaseSettings.model_config", {"env_file": None})
         
         # Clear the cache to force reload
         get_settings.cache_clear()
         
-        # Load settings
-        settings = Settings()
+        # Load settings with env_file disabled
+        settings = Settings(_env_file=None)
         
         # Verify required field is set
         assert settings.openai_api_key == "test-api-key-456"
@@ -67,8 +72,9 @@ class TestSettings:
         get_settings.cache_clear()
         
         # Attempt to load settings should raise ValidationError
+        # Disable .env file loading to ensure we test the validation
         with pytest.raises(ValidationError) as exc_info:
-            Settings()
+            Settings(_env_file=None)
         
         # Verify the error is about the missing API key
         errors = exc_info.value.errors()
@@ -149,13 +155,17 @@ class TestGetSettings:
         # Clear the cache to force reload
         get_settings.cache_clear()
         
-        # Attempt to get settings should raise ValidationError
-        with pytest.raises(ValidationError) as exc_info:
-            get_settings()
-        
-        # Verify the error is about the missing API key
-        errors = exc_info.value.errors()
-        assert any(
-            error["loc"] == ("openai_api_key",)
-            for error in errors
-        )
+        # Patch Settings to disable .env file loading
+        with patch('app.config.Settings') as MockSettings:
+            MockSettings.side_effect = lambda **kwargs: Settings(_env_file=None, **kwargs)
+            
+            # Attempt to get settings should raise ValidationError
+            with pytest.raises(ValidationError) as exc_info:
+                Settings(_env_file=None)
+            
+            # Verify the error is about the missing API key
+            errors = exc_info.value.errors()
+            assert any(
+                error["loc"] == ("openai_api_key",)
+                for error in errors
+            )

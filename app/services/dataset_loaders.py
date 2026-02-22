@@ -15,7 +15,19 @@ logger = logging.getLogger(__name__)
 
 
 class EmailMessage:
-    """Represents an email message."""
+    """Represents an email message from a dataset.
+    
+    This class encapsulates email data loaded from datasets like Enron,
+    providing a structured representation of email metadata and content.
+    
+    Attributes:
+        sender: Email address of the sender
+        recipients: List of recipient email addresses
+        timestamp: When the email was sent (optional)
+        subject: Email subject line
+        body: Email body content
+        message_id: Unique message identifier (optional)
+    """
     
     def __init__(
         self,
@@ -26,6 +38,16 @@ class EmailMessage:
         body: str,
         message_id: Optional[str] = None
     ):
+        """Initialize an email message.
+        
+        Args:
+            sender: Email address of the sender
+            recipients: List of recipient email addresses
+            timestamp: When the email was sent (optional)
+            subject: Email subject line
+            body: Email body content
+            message_id: Unique message identifier (optional)
+        """
         self.sender = sender
         self.recipients = recipients
         self.timestamp = timestamp
@@ -34,7 +56,11 @@ class EmailMessage:
         self.message_id = message_id
     
     def to_dict(self) -> Dict:
-        """Convert to dictionary representation."""
+        """Convert email to dictionary representation.
+        
+        Returns:
+            Dictionary containing all email fields with timestamp as ISO format string
+        """
         return {
             "sender": self.sender,
             "recipients": self.recipients,
@@ -46,7 +72,16 @@ class EmailMessage:
 
 
 class MeetingTranscript:
-    """Represents a meeting transcript."""
+    """Represents a meeting transcript from a dataset.
+    
+    This class encapsulates meeting transcript data loaded from datasets
+    like AMI, providing structured access to utterances and metadata.
+    
+    Attributes:
+        meeting_id: Unique identifier for the meeting
+        utterances: List of utterance dictionaries with speaker and text
+        metadata: Additional meeting metadata (optional)
+    """
     
     def __init__(
         self,
@@ -54,12 +89,23 @@ class MeetingTranscript:
         utterances: List[Dict[str, str]],
         metadata: Optional[Dict] = None
     ):
+        """Initialize a meeting transcript.
+        
+        Args:
+            meeting_id: Unique identifier for the meeting
+            utterances: List of dicts with 'speaker' and 'text' keys
+            metadata: Additional meeting metadata (optional)
+        """
         self.meeting_id = meeting_id
         self.utterances = utterances  # List of {"speaker": str, "text": str}
         self.metadata = metadata or {}
     
     def to_dict(self) -> Dict:
-        """Convert to dictionary representation."""
+        """Convert meeting transcript to dictionary representation.
+        
+        Returns:
+            Dictionary containing meeting ID, utterances, and metadata
+        """
         return {
             "meeting_id": self.meeting_id,
             "utterances": self.utterances,
