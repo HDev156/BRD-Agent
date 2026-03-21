@@ -31,7 +31,7 @@ MAX_DATASET_MEETINGS=100
 DATASET_SAMPLE_SIZE=50
 
 # Gemini Configuration
-GEMINI_API_KEY=AIzaSyCOyBi17NgLF3Sw6v0Tl08t8ef73f5hv5g
+GEMINI_API_KEY=your_gemini_api_key_here
 ```
 
 ### Frontend Configuration: `.env.local`
@@ -251,7 +251,7 @@ OPENAI_MODEL=gpt-4
 ### Using Groq (Current)
 
 ```env
-OPENAI_API_KEY=gsk_...your-groq-key...
+OPENAI_API_KEY=your_groq_api_key_here
 OPENAI_MODEL=llama-3.3-70b-versatile
 OPENAI_BASE_URL=https://api.groq.com/openai/v1
 ```

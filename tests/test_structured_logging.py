@@ -300,7 +300,7 @@ class TestLoggingRequirements:
         """Verify: Never log sensitive data (API keys, full content)."""
         with caplog.at_level(logging.DEBUG):
             # Create service with API key
-            api_key = "test_api_key_1234567890abcdefghijklmnopqrstuvwxyz"
+            api_key = "test_key_1234567890abcdefghijklmnopqrstuvwxyz"
             service = GeminiService(api_key=api_key)
             
             # Check all log records

@@ -62,15 +62,7 @@ class ConstraintApplier:
             "slack_messages": len(data.slack_messages),
             "meetings": len(data.meetings)
         }
-        logger.info(
-            "Applying constraints to data",
-            extra={
-                'initial_counts': initial_counts,
-                'has_scope': bool(constraints.scope),
-                'exclude_topics_count': len(constraints.exclude_topics),
-                'has_priority_focus': bool(constraints.priority_focus)
-            }
-        )
+        logger.info(f"Applying constraints to data: {initial_counts}")
         
         # Filter and prioritize each data type
         filtered_emails = self._filter_and_prioritize(
@@ -105,12 +97,8 @@ class ConstraintApplier:
         }
         
         logger.info(
-            "Filtering complete",
-            extra={
-                'final_counts': final_counts,
-                'excluded_counts': excluded_counts,
-                'total_excluded': sum(excluded_counts.values())
-            }
+            f"Filtering complete. Final counts: {final_counts}, "
+            f"Excluded: {excluded_counts}"
         )
         
         # Return filtered data

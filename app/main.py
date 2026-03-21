@@ -13,25 +13,41 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError as PydanticValidationError
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 
 from app.config import get_settings
 from app.routers import brd, dataset, context
 from app.utils.exceptions import BRDGenerationError, OpenAIServiceError, ValidationError
-from app.utils.logging_config import configure_structured_logging
-from app.dependencies import get_ingestion_tracker
 
 
-# Configure structured logging
-# Set use_json=False for development, use_json=True for production
-configure_structured_logging(level="INFO", use_json=True, enable_sensitive_filter=True)
+# Configure structured logging with timestamps
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - [%(request_id)s] - %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
 logger = logging.getLogger(__name__)
 
 
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
+class RequestIDFilter(logging.Filter):
+    """Logging filter to add request ID to log records."""
+    
+    def filter(self, record):
+        """Add request_id to the log record if not present.
+        
+        Args:
+            record: The log record to filter
+            
+        Returns:
+            bool: Always True to allow the record through
+        """
+        if not hasattr(record, 'request_id'):
+            record.request_id = 'N/A'
+        return True
+
+
+# Add the filter to all handlers
+for handler in logging.root.handlers:
+    handler.addFilter(RequestIDFilter())
 
 
 @asynccontextmanager
@@ -61,11 +77,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEY is required but not set")
         logger.info("OpenAI API key validated")
-        
-        # Start background cleanup task for tracking sessions
-        tracker = get_ingestion_tracker()
-        tracker.start_cleanup_task(cleanup_interval=600)  # Run every 10 minutes
-        logger.info("Tracking session cleanup task started")
     except Exception as e:
         logger.error(f"Configuration validation failed: {e}")
         raise
@@ -85,10 +96,6 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
-
-# Add rate limiter state to app
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # Configure CORS
@@ -141,10 +148,6 @@ async def add_request_id(request: Request, call_next):
 app.include_router(brd.router, tags=["BRD Generation"])
 app.include_router(dataset.router, prefix="/dataset", tags=["Dataset BRD Generation"])
 app.include_router(context.router, tags=["Context BRD Generation"])
-
-# Import processing router
-from app.routers import processing
-app.include_router(processing.router, prefix="/processing", tags=["Processing Status"])
 
 
 # Error handlers for custom exceptions
