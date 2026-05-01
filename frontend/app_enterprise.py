@@ -232,20 +232,39 @@ def simulate_oauth_connection(service_name):
         st.success(f"✅ {service_name} connected successfully!")
         time.sleep(1)
 
-def call_alignment_api(project_name, email_text, slack_text, meeting_text):
-    """Call backend API for alignment analysis."""
-    payload = {
-        "projectName": project_name,
-        "emailText": email_text if email_text else None,
-        "slackText": slack_text if slack_text else None,
-        "meetingText": meeting_text if meeting_text else None
-    }
+def call_alignment_api(project_name, email_text, slack_text, meeting_text, instructions=None):
+    """Call backend API for alignment analysis with optional instructions."""
+    if instructions:
+        # Use new context endpoint with Gemini instructions
+        payload = {
+            "instructions": instructions,
+            "data": {
+                "emails": [{"subject": "Project Data", "body": email_text, "sender": "auto@reqmind.ai", "date": datetime.now().isoformat()}] if email_text else [],
+                "slack_messages": [{"channel": "#project", "user": "auto", "text": slack_text, "timestamp": datetime.now().isoformat()}] if slack_text else [],
+                "meetings": [{"transcript": meeting_text, "topic": "Project Meeting", "speakers": ["Team"]}] if meeting_text else []
+            }
+        }
+        
+        response = requests.post(
+            f"{API_BASE_URL}/generate_brd_with_context",
+            json=payload,
+            timeout=30
+        )
+    else:
+        # Use standard endpoint without instructions
+        payload = {
+            "projectName": project_name,
+            "emailText": email_text if email_text else None,
+            "slackText": slack_text if slack_text else None,
+            "meetingText": meeting_text if meeting_text else None
+        }
+        
+        response = requests.post(
+            f"{API_BASE_URL}/generate_brd_with_alignment",
+            json=payload,
+            timeout=30
+        )
     
-    response = requests.post(
-        f"{API_BASE_URL}/generate_brd_with_alignment",
-        json=payload,
-        timeout=30
-    )
     response.raise_for_status()
     return response.json()
 
@@ -466,6 +485,26 @@ def render_data_sources():
         st.markdown("### 🤖 Auto-Ingestion Active")
         st.info("✨ Data automatically collected from connected sources")
         
+        # Gemini Instructions Section
+        st.markdown("### ✨ AI Instructions (Gemini-Powered)")
+        st.markdown("""
+        <div class="integration-card">
+            <p style="color: #94a3b8;">
+                Use natural language to guide the analysis. Tell the system what to focus on, 
+                what to ignore, and what to prioritize.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        instructions = st.text_area(
+            "Project Instructions (Optional)",
+            placeholder="Example: Focus on MVP features only, ignore marketing discussions, prioritize mobile functionality, client deadline is June 2024",
+            height=100,
+            help="Gemini AI will convert your instructions into structured constraints for intelligent filtering"
+        )
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             if st.button("🚀 Analyze Alignment Now", use_container_width=True, type="primary"):
@@ -479,7 +518,8 @@ def render_data_sources():
                             "Auto-Collected Project",
                             email_data,
                             slack_data,
-                            ""
+                            "",
+                            instructions=instructions if instructions.strip() else None
                         )
                         st.session_state.current_analysis = result
                         st.session_state.analysis_history.append({
@@ -609,6 +649,58 @@ def render_analysis():
             st.warning(f"**{mismatch['description']}**")
     
     st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Ingestion Summary (if available from context endpoint)
+    if 'ingestion_summary' in result and result['ingestion_summary']:
+        st.markdown("### 📊 Ingestion Summary")
+        summary = result['ingestion_summary']
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>📧 Emails</h4>
+                <div class="gauge-score" style="font-size: 2rem;">{summary.get('emails_used', 0)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>💬 Slack Messages</h4>
+                <div class="gauge-score" style="font-size: 2rem;">{summary.get('slack_messages_used', 0)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>🎤 Meetings</h4>
+                <div class="gauge-score" style="font-size: 2rem;">{summary.get('meetings_used', 0)}</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col4:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h4>⏱️ Processing Time</h4>
+                <div class="gauge-score" style="font-size: 2rem;">{summary.get('processing_time_seconds', 0):.1f}s</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        if summary.get('total_chunks_processed', 0) > 0:
+            st.info(f"📦 Large data was automatically chunked into {summary['total_chunks_processed']} parts for processing")
+        
+        if summary.get('sample_sources'):
+            with st.expander("📋 View Sample Sources Used", expanded=False):
+                for i, source in enumerate(summary['sample_sources'], 1):
+                    st.markdown(f"**Source {i}:** {source.get('type', 'unknown').title()}")
+                    if 'metadata' in source:
+                        for key, value in source['metadata'].items():
+                            st.markdown(f"- {key}: {value}")
+                    st.markdown("---")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
     
     # BRD Viewer
     st.markdown("### 📄 Generated Business Requirements Document")
