@@ -19,24 +19,32 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
 <style>
+    :root {
+        --dark-bg: #1a1a2e;
+        --accent: #667eea;
+        --glass: rgba(255, 255, 255, 0.05);
+    }
     .main-header {
+        font-family: 'Inter', sans-serif;
         font-size: 3rem;
-        font-weight: 700;
-        color: #1f1f1f;
+        font-weight: 800;
+        color: #ffffff;
         text-align: center;
         margin-bottom: 0.5rem;
     }
     .sub-header {
         font-size: 1.2rem;
-        color: #666;
+        color: #a0a0a0;
         text-align: center;
         margin-bottom: 2rem;
     }
     .feature-card {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: var(--glass);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
         color: white;
         padding: 1.5rem;
-        border-radius: 10px;
+        border-radius: 15px;
         margin: 0.5rem 0;
         text-align: center;
     }
